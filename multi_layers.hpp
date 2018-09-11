@@ -16,7 +16,13 @@ struct Sequential : public Function {
     std::vector<std::shared_ptr<Function>> layers;
     std::vector<std::shared_ptr<Tensor>> out_tensors; // the inner buffers
 
-    Sequential(const TensorDesc& input_dim, const std::string& name) : name(name), input_desc(input_dim) {}
+
+
+    Sequential(const TensorDesc& input_dim, const std::string& name) : name(name), input_desc(input_dim) 
+    {
+
+    }
+
     Sequential(const TensorDesc& input_dim) : Sequential(input_dim, "Sequential") {}
     Sequential(const Sequential&) = default;
     Sequential(Sequential&&) = default;
@@ -110,6 +116,32 @@ struct Sequential : public Function {
         }
     }
 
+    template <typename Func>
+    void forward_pass_step(const Tensor& input, Tensor& output, Func f, size_t idx)
+    {
+        assert(layers.size() > 0);
+        Tensor* out;
+        const Tensor* in;
+        if(idx == 0 )
+        {
+            in = &input;
+        }
+        else
+        {
+            in = out_tensors[idx - 1].get();
+        }
+        if(idx < layers.size() - 1 )
+        {
+            out = out_tensors[idx].get();
+        }
+        else
+        {
+            out = &output;
+        }
+        f(*layers[idx], *in, *out);
+    }
+
+
     // for each layer backwards, calls b(Layer& l, Tensor& dout, Tensor& din)
     template <typename Func>
     void backward_pass(const Tensor& doutput, Tensor& dinput, Func b) {
@@ -142,6 +174,15 @@ struct Sequential : public Function {
         });
     }
 
+    void forward_step(const Tensor& in, Tensor& out, size_t idx)
+    {
+        forward_pass_step(in, out, [](Function& l, const Tensor& i, Tensor& o)
+        {
+            l.forward(i, o);
+            CHECK_HIP(hipDeviceSynchronize());
+        }, idx);
+    }
+
     virtual void init_backward(const Tensor& dout, Tensor& din) override {
         backward_pass(dout, din, [](Function& l, const Tensor& o, Tensor& i){
             l.init_backward(o, i);
@@ -164,8 +205,10 @@ struct Model : public Sequential {
     Tensor output;
     bool is_init_fwd;
     bool is_init_bwd;
+    
 
-    Model(const TensorDesc& input_dim, const std::string& name) : Sequential(input_dim, name), input(input_dim), is_init_fwd(false), is_init_bwd(false) {}
+    Model(const TensorDesc& input_dim, const std::string& name) : Sequential(input_dim, name), input(input_dim), is_init_fwd(false), is_init_bwd(false) 
+    {}
     Model(const TensorDesc& input_dim) : Model(input_dim, "Model") {}
     Model(const Model&) = default;
     Model(Model&&) = default;

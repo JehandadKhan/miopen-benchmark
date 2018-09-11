@@ -3,6 +3,7 @@
 #include "utils.hpp"
 #include "layers.hpp"
 #include "multi_layers.hpp"
+#include "fused_layers.hpp"
 
 
 /* TODO ResNet
@@ -18,11 +19,15 @@ Sequential makeBlock(const TensorDesc& input_dim, int planes, int stride=1) {
     // BasicBlock
     DEBUG("making block with dim " << input_dim );
     Sequential preblock(input_dim, "Shortcut_F");
-    preblock.emplace<ConvLayer>(planes, 3, 1, stride);
-    preblock.emplace<BatchNorm>();
-    preblock.emplace<ReLU>();
-    preblock.emplace<ConvLayer>(planes, 3, 1, 1);
-    preblock.emplace<BatchNorm>();
+    preblock.emplace<FusedCBR>(planes, 3, 1, stride);
+
+    //preblock.emplace<ConvLayer>(planes, 3, 1, stride);
+    //preblock.emplace<BatchNorm>();
+    //preblock.emplace<ReLU>();
+
+    preblock.emplace<FusedCB>(planes, 3, 1, 1);
+    //preblock.emplace<ConvLayer>(planes, 3, 1, 1);
+    //preblock.emplace<BatchNorm>();
 
     Sequential downsample_block(input_dim, "downsample");
     downsample_block.emplace<ConvLayer>(planes, 1, 0, stride);
@@ -41,19 +46,29 @@ Sequential makeBlock(const TensorDesc& input_dim, int planes, int stride=1) {
 
 Sequential makeBottleneck(const TensorDesc& input_dim, int planes, int stride=1) {
     Sequential left(input_dim, "Shortcut_F");
-    left.emplace<ConvLayer>(planes, 1);
-    left.emplace<BatchNormInference>();
-    left.emplace<ReLU>();
+
+    left.emplace<FusedCNRLayer>(planes, 1);
+
+    //left.emplace<ConvLayer>(planes, 1);
+    //left.emplace<FusedBNR>();
+
+    //left.emplace<BatchNorm>();
+    //left.emplace<ReLU>();
     // reduce size by `stride` (either 1 or 2)
+    //left.emplace<FusedCNRLayer>(planes, 3, 1, stride);
     left.emplace<ConvLayer>(planes, 3, 1, stride);
-    left.emplace<BatchNormInference>();
-    left.emplace<ReLU>();
+    
+    left.emplace<FusedBNR>();
+    //left.emplace<BatchNorm>();
+    //left.emplace<ReLU>();
     // 4x expansion of channels
+    //left.emplace<FusedCB>(4*planes, 1);
     left.emplace<ConvLayer>(4*planes, 1);
     left.emplace<BatchNormInference>();
 
     // downsample residual
     Sequential downsample_block(input_dim, "downsample");
+
     downsample_block.emplace<ConvLayer>(4*planes, 1, 0, stride);
     downsample_block.emplace<BatchNormInference>();
 
@@ -88,8 +103,9 @@ Model make_resnet(const TensorDesc& input_dim, B blockfunc, const std::vector<in
 
     Sequential pre(input_dim, "ResNet Pre");
     pre.emplace<ConvLayer>(64, 7, 3, 2);
-    pre.emplace<BatchNormInference>();
-    pre.emplace<ReLU>();
+    pre.emplace<FusedBNR>();
+    // pre.emplace<BatchNorm>();
+    // pre.emplace<ReLU>();
     pre.emplace<MaxPool>(3, 0, 2);
     DEBUG("ResNet Pre output dims: " << pre.getOutputDesc());
 
@@ -141,7 +157,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-        std::cout << " Received " << argc << " arguments while only 2 or three are expected";
+        std::cout << " Received " << argc << " arguments while only 2 or 3 are expected";
         exit(-1);
     }
 
